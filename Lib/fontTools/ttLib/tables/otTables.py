@@ -618,32 +618,18 @@ class Coverage(FormatSwitchingBaseTable):
 		glyphs.append(attrs["value"])
 
 
-class VarIdxMap(BaseTable):
+class DeltaSetIndexMap(BaseTable):
 
 	def populateDefaults(self, propagator=None):
 		if not hasattr(self, 'mapping'):
-			self.mapping = {}
+			self.mapping = []
 
 	def postRead(self, rawTable, font):
 		assert (rawTable['EntryFormat'] & 0xFFC0) == 0
-		glyphOrder = font.getGlyphOrder()
-		mapList = rawTable['mapping']
-		mapList.extend([mapList[-1]] * (len(glyphOrder) - len(mapList)))
-		self.mapping = dict(zip(glyphOrder, mapList))
+		self.mapping = rawTable['mapping']
 
-	def preWrite(self, font):
-		mapping = getattr(self, "mapping", None)
-		if mapping is None:
-			mapping = self.mapping = {}
-
-		glyphOrder = font.getGlyphOrder()
-		mapping = [mapping[g] for g in glyphOrder]
-		while len(mapping) > 1 and mapping[-2] == mapping[-1]:
-			del mapping[-1]
-
-		rawTable = { 'mapping': mapping }
-		rawTable['MappingCount'] = len(mapping)
-
+	@staticmethod
+	def getEntryFormat(mapping):
 		ored = 0
 		for idx in mapping:
 			ored |= idx
@@ -666,9 +652,64 @@ class VarIdxMap(BaseTable):
 		else:
 			entrySize = 4
 
-		entryFormat = ((entrySize - 1) << 4) | (innerBits - 1)
+		return ((entrySize - 1) << 4) | (innerBits - 1)
 
-		rawTable['EntryFormat'] = entryFormat
+	def preWrite(self, font):
+		mapping = getattr(self, "mapping", None)
+		if mapping is None:
+			mapping = self.mapping = []
+		rawTable = {'mapping': mapping}
+		rawTable['MappingCount'] = len(mapping)
+		rawTable['EntryFormat'] = self.getEntryFormat(mapping)
+		return rawTable
+
+	def toXML2(self, xmlWriter, font):
+		for i, value in enumerate(getattr(self, "mapping", [])):
+			attrs = (
+				('index', i),
+				('outer', value >> 16),
+				('inner', value & 0xFFFF),
+			)
+			xmlWriter.simpletag("Map", attrs)
+			xmlWriter.newline()
+
+	def fromXML(self, name, attrs, content, font):
+		mapping = getattr(self, "mapping", None)
+		if mapping is None:
+			self.mapping = mapping = []
+		index = attrs['index']
+		outer = safeEval(attrs['outer'])
+		inner = safeEval(attrs['inner'])
+		assert inner <= 0xFFFF
+		mapping.append(index, (outer << 16) | inner)
+
+
+class VarIdxMap(DeltaSetIndexMap):
+
+	def populateDefaults(self, propagator=None):
+		if not hasattr(self, 'mapping'):
+			self.mapping = {}
+
+	def postRead(self, rawTable, font):
+		assert (rawTable['EntryFormat'] & 0xFFC0) == 0
+		glyphOrder = font.getGlyphOrder()
+		mapList = rawTable['mapping']
+		mapList.extend([mapList[-1]] * (len(glyphOrder) - len(mapList)))
+		self.mapping = dict(zip(glyphOrder, mapList))
+
+	def preWrite(self, font):
+		mapping = getattr(self, "mapping", None)
+		if mapping is None:
+			mapping = self.mapping = {}
+
+		glyphOrder = font.getGlyphOrder()
+		mapping = [mapping[g] for g in glyphOrder]
+		while len(mapping) > 1 and mapping[-2] == mapping[-1]:
+			del mapping[-1]
+
+		rawTable = {'mapping': mapping}
+		rawTable['MappingCount'] = len(mapping)
+		rawTable['EntryFormat'] = self.getEntryFormat(mapping)
 		return rawTable
 
 	def toXML2(self, xmlWriter, font):

@@ -121,6 +121,13 @@ def buildVarIdxMap(varIdxes, glyphOrder):
 	self.mapping = {g:v for g,v in zip(glyphOrder, varIdxes)}
 	return self
 
+
+def buildDeltaSetIndexMap(varIdxes):
+	self = ot.DeltaSetIndexMap()
+	self.mapping = list(varIdxes)
+	return self
+
+
 def buildVarDevTable(varIdx):
 	self = ot.Device()
 	self.DeltaFormat = 0x8000
